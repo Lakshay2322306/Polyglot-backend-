@@ -1,14 +1,18 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import logging
 import requests
 
-# Setup logging
+# Initialize Flask app and enable CORS
+app = Flask(__name__)
+CORS(app)  # Allow requests from any domain
+# For production, use: CORS(app, origins=["https://polyglot-phi.vercel.app"])
+
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-
-# Translation API URLs
+# External Translation APIs
 LIBRETRANSLATE_URL = "https://libretranslate.com/translate"
 LINGVA_URL = "https://lingva.ml/api/v1"
 
@@ -51,7 +55,7 @@ def translate():
 
     translated_text, error = translate_text(text, source_lang, target_lang)
     if error or not translated_text:
-        return jsonify({"error": error or "Unknown error"}), 500
+        return jsonify({"error": error or "Translation failed"}), 500
 
     return jsonify({
         "original_text": text,
