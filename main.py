@@ -1,42 +1,64 @@
 from flask import Flask, request, jsonify
+import logging
 import requests
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Translation API URLs
 LIBRETRANSLATE_URL = "https://libretranslate.com/translate"
+LINGVA_URL = "https://lingva.ml/api/v1"
 
-@app.route("/translate", methods=["POST"])
-def translate():
-    text = request.json.get("text")
-    source_lang = request.json.get("source_lang", "auto")
-    target_lang = request.json.get("target_lang", "en")
-
-    if not text:
-        return jsonify({"error": "Text is required"}), 400
-
+def translate_text(text, source="auto", target="es"):
     try:
         response = requests.post(
             LIBRETRANSLATE_URL,
-            json={
-                "q": text,
-                "source": source_lang,
-                "target": target_lang,
-                "format": "text"
-            },
+            json={"q": text, "source": source, "target": target, "format": "text"},
             headers={"Content-Type": "application/json"},
             timeout=5
         )
-        result = response.json()
-        return jsonify({
-            "translated_text": result.get("translatedText", ""),
-            "original_text": text
-        })
+        if response.status_code == 200:
+            return response.json().get("translatedText", "Translation failed"), None
+        logger.warning(f"LibreTranslate failed: HTTP {response.status_code}")
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"LibreTranslate error: {str(e)}")
 
-@app.route("/")
+    try:
+        lingva_url = f"{LINGVA_URL}/{source}/{target}/{text}"
+        response = requests.get(lingva_url, timeout=5)
+        if response.status_code == 200:
+            return response.json().get("translation", "Translation failed"), None
+        return None, f"Lingva failed: HTTP {response.status_code}"
+    except Exception as e:
+        return None, f"Lingva error: {str(e)}"
+
+@app.route('/')
 def home():
-    return "PolyGlot API is running."
+    return jsonify({"message": "PolyGlot API is running."})
 
-if __name__ == "__main__":
+@app.route('/translate', methods=['POST'])
+def translate():
+    data = request.get_json()
+    text = data.get('text')
+    source_lang = data.get('source_lang', 'auto')
+    target_lang = data.get('target_lang', 'es')
+
+    if not text:
+        return jsonify({"error": "Please enter text to translate"}), 400
+
+    translated_text, error = translate_text(text, source_lang, target_lang)
+    if error or not translated_text:
+        return jsonify({"error": error or "Unknown error"}), 500
+
+    return jsonify({
+        "original_text": text,
+        "translated_text": translated_text,
+        "source_lang": source_lang,
+        "target_lang": target_lang
+    })
+
+if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080)
